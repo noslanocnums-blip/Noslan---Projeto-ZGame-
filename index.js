@@ -21,13 +21,14 @@ const YOUTUBE_CHANNELS = [
   }
 ];
 
-const ultimosVideos = {};
+// Guarda os vídeos que já foram enviados
+const videosEnviados = new Set();
 
 async function verificarCanal(canalYT) {
   try {
     let channelId = canalYT.id;
 
-    // Descobre automaticamente o ID do canal
+    // Descobre automaticamente o ID do @zechinxb
     if (!channelId) {
       const pagina = await fetch(
         `https://www.youtube.com/${canalYT.handle}`
@@ -37,7 +38,7 @@ async function verificarCanal(canalYT) {
 
       if (!match) {
         console.log(
-          `Não foi possível encontrar o canal ${canalYT.handle}.`
+          `Não foi possível encontrar ${canalYT.handle}`
         );
         return;
       }
@@ -53,37 +54,15 @@ async function verificarCanal(canalYT) {
       return;
     }
 
+    /*
+     * IMPORTANTE:
+     * O RSS pode retornar vários vídeos.
+     *
+     * Nós só analisamos o vídeo mais recente.
+     */
     const video = feed.items[0];
 
-    // Primeira verificação: apenas registra o vídeo atual
-    if (!ultimosVideos[canalYT.handle]) {
-      ultimosVideos[canalYT.handle] = video.id;
-
-      console.log(
-        `Vídeo inicial registrado (${canalYT.handle}): ${video.title}`
-      );
-
-      return;
-    }
-
-    // Não há vídeo novo
-    if (video.id === ultimosVideos[canalYT.handle]) {
-      return;
-    }
-
-    // Novo vídeo encontrado
-    ultimosVideos[canalYT.handle] = video.id;
-
-    const canalDiscord = await client.channels.fetch(
-      DISCORD_CHANNEL_ID
-    );
-
-    if (!canalDiscord) {
-      console.log("Canal do Discord não encontrado.");
-      return;
-    }
-
-    // Tenta obter o ID do vídeo
+    // ID do vídeo
     let videoId = null;
 
     if (video.id) {
@@ -92,7 +71,7 @@ async function verificarCanal(canalYT) {
         .trim();
     }
 
-    // Se não encontrou pelo ID, tenta pelo link
+    // Tenta encontrar pelo link
     if (!videoId || videoId.length !== 11) {
       const match = video.link?.match(
         /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
@@ -103,35 +82,111 @@ async function verificarCanal(canalYT) {
       }
     }
 
-    // Link oficial
-    const videoLink = videoId
-      ? `https://www.youtube.com/watch?v=${videoId}`
-      : video.link;
+    if (!videoId) {
+      console.log(
+        `Não foi possível encontrar o ID de ${canalYT.handle}`
+      );
+      return;
+    }
 
-    // Thumbnail
-    const thumbnail = videoId
-      ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
-      : null;
+    /*
+     * Se esse vídeo já foi enviado,
+     * não envia novamente.
+     */
+    if (videosEnviados.has(videoId)) {
+      return;
+    }
+
+    /*
+     * Primeira inicialização:
+     * registra o vídeo atual sem mandar mensagem.
+     *
+     * Isso evita que o bot mande vídeos antigos
+     * quando reinicia.
+     */
+    if (!videosEnviados.has(`INICIADO_${canalYT.handle}`)) {
+
+      videosEnviados.add(`INICIADO_${canalYT.handle}`);
+      videosEnviados.add(videoId);
+
+      console.log(
+        `Vídeo atual registrado (${canalYT.handle}): ${video.title}`
+      );
+
+      return;
+    }
+
+    // Marca como enviado antes de mandar
+    videosEnviados.add(videoId);
+
+    const canalDiscord = await client.channels.fetch(
+      DISCORD_CHANNEL_ID
+    );
+
+    if (!canalDiscord) {
+      console.log("Canal do Discord não encontrado.");
+      return;
+    }
+
+    /*
+     * LINK DO VÍDEO
+     */
+    const videoLink =
+      `https://www.youtube.com/watch?v=${videoId}`;
+
+    /*
+     * THUMBNAIL
+     *
+     * Primeiro tenta usar a thumbnail que o RSS
+     * fornece.
+     */
+    let thumbnail = null;
+
+    if (
+      video.media &&
+      video.media.thumbnail &&
+      video.media.thumbnail.$
+    ) {
+      thumbnail = video.media.thumbnail.$.url;
+    }
+
+    /*
+     * Algumas versões do rss-parser podem colocar
+     * a thumbnail diretamente aqui.
+     */
+    if (
+      !thumbnail &&
+      video["media:thumbnail"] &&
+      video["media:thumbnail"]["$"]
+    ) {
+      thumbnail = video["media:thumbnail"]["$"].url;
+    }
+
+    /*
+     * Fallback para a thumbnail oficial do YouTube.
+     */
+    if (!thumbnail) {
+      thumbnail =
+        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    }
 
     const embed = new EmbedBuilder()
       .setTitle("📢 Novo conteúdo no YouTube!")
       .setDescription(
-        `**${video.title || "Novo vídeo no YouTube!"}**\n\nCanal: **${canalYT.handle}**`
+        `**${video.title || "Novo vídeo!"}**\n\n` +
+        `Canal: **${canalYT.handle}**`
       )
       .setURL(videoLink)
+      .setImage(thumbnail)
       .setTimestamp(
-        video.pubDate ? new Date(video.pubDate) : new Date()
+        video.pubDate
+          ? new Date(video.pubDate)
+          : new Date()
       )
       .setFooter({
         text: "ZGame • YouTube"
       });
 
-    // Adiciona thumbnail
-    if (thumbnail) {
-      embed.setImage(thumbnail);
-    }
-
-    // Envia para o Discord
     await canalDiscord.send({
       content: "@everyone",
       embeds: [embed],
@@ -141,15 +196,15 @@ async function verificarCanal(canalYT) {
     });
 
     console.log(
-      `Novo conteúdo enviado (${canalYT.handle}): ${video.title}`
+      `Novo vídeo enviado: ${video.title}`
     );
 
     console.log(
-      `ID do vídeo: ${videoId || "não encontrado"}`
+      `ID: ${videoId}`
     );
 
     console.log(
-      `Link: ${videoLink}`
+      `Thumbnail: ${thumbnail}`
     );
 
   } catch (erro) {
@@ -160,19 +215,26 @@ async function verificarCanal(canalYT) {
 }
 
 async function verificarYouTube() {
+
   for (const canal of YOUTUBE_CHANNELS) {
     await verificarCanal(canal);
   }
+
 }
 
 client.once("ready", async () => {
-  console.log(`Online como ${client.user.tag}`);
 
-  // Primeira verificação
+  console.log(
+    `Online como ${client.user.tag}`
+  );
+
   await verificarYouTube();
 
-  // Verifica a cada 30 segundos
-  setInterval(verificarYouTube, 30 * 1000);
+  setInterval(
+    verificarYouTube,
+    30 * 1000
+  );
+
 });
 
 client.login(DISCORD_TOKEN);
