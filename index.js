@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { Client, GatewayIntentBits } = require("discord.js");
 const Parser = require("rss-parser");
 
 const client = new Client({
@@ -54,12 +54,7 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    /*
-     * IMPORTANTE:
-     * O RSS pode retornar vários vídeos.
-     *
-     * Nós só analisamos o vídeo mais recente.
-     */
+    // Pega somente o vídeo mais recente
     const video = feed.items[0];
 
     // ID do vídeo
@@ -89,23 +84,16 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    /*
-     * Se esse vídeo já foi enviado,
-     * não envia novamente.
-     */
+    // Se já foi enviado, não envia novamente
     if (videosEnviados.has(videoId)) {
       return;
     }
 
     /*
      * Primeira inicialização:
-     * registra o vídeo atual sem mandar mensagem.
-     *
-     * Isso evita que o bot mande vídeos antigos
-     * quando reinicia.
+     * registra o vídeo atual sem enviar.
      */
     if (!videosEnviados.has(`INICIADO_${canalYT.handle}`)) {
-
       videosEnviados.add(`INICIADO_${canalYT.handle}`);
       videosEnviados.add(videoId);
 
@@ -116,9 +104,6 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // Marca como enviado antes de mandar
-    videosEnviados.add(videoId);
-
     const canalDiscord = await client.channels.fetch(
       DISCORD_CHANNEL_ID
     );
@@ -128,83 +113,37 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    /*
-     * LINK DO VÍDEO
-     */
+    // Link oficial do vídeo
     const videoLink =
       `https://www.youtube.com/watch?v=${videoId}`;
 
     /*
-     * THUMBNAIL
+     * Marca como enviado ANTES de mandar.
+     * Assim, se houver outra verificação enquanto
+     * o envio estiver acontecendo, ele não duplica.
+     */
+    videosEnviados.add(videoId);
+
+    /*
+     * Mensagem normal, sem Embed.
      *
-     * Primeiro tenta usar a thumbnail que o RSS
-     * fornece.
+     * O Discord vai gerar automaticamente
+     * a prévia/thumbnail do YouTube.
      */
-    let thumbnail = null;
-
-    if (
-      video.media &&
-      video.media.thumbnail &&
-      video.media.thumbnail.$
-    ) {
-      thumbnail = video.media.thumbnail.$.url;
-    }
-
-    /*
-     * Algumas versões do rss-parser podem colocar
-     * a thumbnail diretamente aqui.
-     */
-    if (
-      !thumbnail &&
-      video["media:thumbnail"] &&
-      video["media:thumbnail"]["$"]
-    ) {
-      thumbnail = video["media:thumbnail"]["$"].url;
-    }
-
-    /*
-     * Fallback para a thumbnail oficial do YouTube.
-     */
-    if (!thumbnail) {
-      thumbnail =
-        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("📢 Novo conteúdo no YouTube!")
-      .setDescription(
-        `**${video.title || "Novo vídeo!"}**\n\n` +
-        `Canal: **${canalYT.handle}**`
-      )
-      .setURL(videoLink)
-      .setImage(thumbnail)
-      .setTimestamp(
-        video.pubDate
-          ? new Date(video.pubDate)
-          : new Date()
-      )
-      .setFooter({
-        text: "ZGame • YouTube"
-      });
-
     await canalDiscord.send({
-      content: "@everyone",
-      embeds: [embed],
+      content:
+        `@everyone\n\n` +
+        `🔴 **O ${canalYT.handle} acabou de postar!**\n\n` +
+        `**${video.title || "Novo vídeo!"}**\n\n` +
+        `👉 ${videoLink}`,
+
       allowedMentions: {
         parse: ["everyone"]
       }
     });
 
     console.log(
-      `Novo vídeo enviado: ${video.title}`
-    );
-
-    console.log(
-      `ID: ${videoId}`
-    );
-
-    console.log(
-      `Thumbnail: ${thumbnail}`
+      `Novo vídeo enviado (${canalYT.handle}): ${video.title}`
     );
 
   } catch (erro) {
@@ -215,11 +154,9 @@ async function verificarCanal(canalYT) {
 }
 
 async function verificarYouTube() {
-
   for (const canal of YOUTUBE_CHANNELS) {
     await verificarCanal(canal);
   }
-
 }
 
 client.once("ready", async () => {
@@ -228,8 +165,10 @@ client.once("ready", async () => {
     `Online como ${client.user.tag}`
   );
 
+  // Primeira verificação
   await verificarYouTube();
 
+  // Verifica a cada 30 segundos
   setInterval(
     verificarYouTube,
     30 * 1000
