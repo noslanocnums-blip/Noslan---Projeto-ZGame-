@@ -1,4 +1,3 @@
-
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const Parser = require("rss-parser");
 
@@ -28,7 +27,6 @@ async function verificarCanal(canalYT) {
   try {
     let channelId = canalYT.id;
 
-    // Se o canal não tiver ID definido, descobre pelo @handle
     if (!channelId) {
       const pagina = await fetch(
         `https://www.youtube.com/${canalYT.handle}`
@@ -50,11 +48,12 @@ async function verificarCanal(canalYT) {
       `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
     );
 
-    if (!feed.items || feed.items.length === 0) return;
+    if (!feed.items || feed.items.length === 0) {
+      return;
+    }
 
     const video = feed.items[0];
 
-    // Primeiro acesso: registra o vídeo atual
     if (!ultimosVideos[canalYT.handle]) {
       ultimosVideos[canalYT.handle] = video.id;
 
@@ -65,10 +64,10 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // Se não tem conteúdo novo
-    if (video.id === ultimosVideos[canalYT.handle]) return;
+    if (video.id === ultimosVideos[canalYT.handle]) {
+      return;
+    }
 
-    // Atualiza o último vídeo
     ultimosVideos[canalYT.handle] = video.id;
 
     const canalDiscord = await client.channels.fetch(
@@ -76,4 +75,48 @@ async function verificarCanal(canalYT) {
     );
 
     if (!canalDiscord) {
-      console.log("Canal do
+      console.log("Canal do Discord não encontrado.");
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("📢 Novo conteúdo no YouTube!")
+      .setDescription(
+        `**${video.title}**\n\nCanal: **${canalYT.handle}**`
+      )
+      .setURL(video.link)
+      .setTimestamp(new Date(video.pubDate))
+      .setFooter({
+        text: "ZGame • YouTube"
+      });
+
+    await canalDiscord.send({
+      embeds: [embed]
+    });
+
+    console.log(
+      `Novo conteúdo enviado (${canalYT.handle}): ${video.title}`
+    );
+
+  } catch (erro) {
+    console.error(
+      `Erro ao verificar ${canalYT.handle}: ${erro.message}`
+    );
+  }
+}
+
+async function verificarYouTube() {
+  for (const canal of YOUTUBE_CHANNELS) {
+    await verificarCanal(canal);
+  }
+}
+
+client.once("ready", async () => {
+  console.log(`Online como ${client.user.tag}`);
+
+  await verificarYouTube();
+
+  setInterval(verificarYouTube, 60 * 1000);
+});
+
+client.login(DISCORD_TOKEN);
