@@ -79,16 +79,30 @@ async function verificarCanal(canalYT) {
       return;
     }
 
+    // Pega o ID real do vídeo
+    const videoId = video.link.match(
+      /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
+    )?.[1];
+
+    const thumbnail = videoId
+      ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+      : null;
+
     const embed = new EmbedBuilder()
       .setTitle("📢 Novo conteúdo no YouTube!")
       .setDescription(
-        `**${video.title}**\n\nCanal: **${canalYT.handle}**`
+        `**${video.title || "Novo vídeo no YouTube!"}**\n\nCanal: **${canalYT.handle}**`
       )
       .setURL(video.link)
       .setTimestamp(new Date(video.pubDate))
       .setFooter({
         text: "ZGame • YouTube"
       });
+
+    // Adiciona a thumbnail
+    if (thumbnail) {
+      embed.setImage(thumbnail);
+    }
 
     await canalDiscord.send({
       embeds: [embed]
