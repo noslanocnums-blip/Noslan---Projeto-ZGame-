@@ -1,3 +1,4 @@
+
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const Parser = require("rss-parser");
 
@@ -10,28 +11,40 @@ const parser = new Parser();
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
-const YOUTUBE_HANDLES = [
-  "@zechinxb",
-  "@zgameclipes"
+const YOUTUBE_CHANNELS = [
+  {
+    handle: "@zechinxb",
+    id: null
+  },
+  {
+    handle: "@zgameclipes",
+    id: "UCcrdcEGehihSdSrUgs0RsHA"
+  }
 ];
 
 const ultimosVideos = {};
 
-async function verificarCanal(handle) {
+async function verificarCanal(canalYT) {
   try {
-    // Descobre automaticamente o ID do canal através do @handle
-    const pagina = await fetch(
-      `https://www.youtube.com/${handle}`
-    ).then(res => res.text());
+    let channelId = canalYT.id;
 
-    const match = pagina.match(/"channelId":"(UC[^"]+)"/);
+    // Se o canal não tiver ID definido, descobre pelo @handle
+    if (!channelId) {
+      const pagina = await fetch(
+        `https://www.youtube.com/${canalYT.handle}`
+      ).then(res => res.text());
 
-    if (!match) {
-      console.log(`Não foi possível encontrar o canal ${handle}.`);
-      return;
+      const match = pagina.match(/"channelId":"(UC[^"]+)"/);
+
+      if (!match) {
+        console.log(
+          `Não foi possível encontrar o canal ${canalYT.handle}.`
+        );
+        return;
+      }
+
+      channelId = match[1];
     }
-
-    const channelId = match[1];
 
     const feed = await parser.parseURL(
       `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
@@ -41,63 +54,26 @@ async function verificarCanal(handle) {
 
     const video = feed.items[0];
 
-    // Primeiro acesso: registra o vídeo atual sem enviar notificação
-    if (!ultimosVideos[handle]) {
-      ultimosVideos[handle] = video.id;
+    // Primeiro acesso: registra o vídeo atual
+    if (!ultimosVideos[canalYT.handle]) {
+      ultimosVideos[canalYT.handle] = video.id;
+
       console.log(
-        `Vídeo inicial registrado (${handle}): ${video.title}`
+        `Vídeo inicial registrado (${canalYT.handle}): ${video.title}`
       );
+
       return;
     }
 
-    // Nada novo
-    if (video.id === ultimosVideos[handle]) return;
+    // Se não tem conteúdo novo
+    if (video.id === ultimosVideos[canalYT.handle]) return;
 
     // Atualiza o último vídeo
-    ultimosVideos[handle] = video.id;
+    ultimosVideos[canalYT.handle] = video.id;
 
-    const canal = await client.channels.fetch(DISCORD_CHANNEL_ID);
-
-    if (!canal) {
-      console.log("Canal do Discord não encontrado.");
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle("📢 Novo conteúdo no YouTube!")
-      .setDescription(
-        `**${video.title}**\n\nCanal: **${handle}**`
-      )
-      .setURL(video.link)
-      .setTimestamp(new Date(video.pubDate))
-      .setFooter({ text: "ZGame • YouTube" });
-
-    await canal.send({ embeds: [embed] });
-
-    console.log(
-      `Novo conteúdo enviado (${handle}): ${video.title}`
+    const canalDiscord = await client.channels.fetch(
+      DISCORD_CHANNEL_ID
     );
 
-  } catch (erro) {
-    console.error(
-      `Erro ao verificar ${handle}:`,
-      erro.message
-    );
-  }
-}
-
-async function verificarYouTube() {
-  for (const handle of YOUTUBE_HANDLES) {
-    await verificarCanal(handle);
-  }
-}
-
-client.once("ready", async () => {
-  console.log(`Online como ${client.user.tag}`);
-
-  await verificarYouTube();
-
-  setInterval(verificarYouTube, 60 * 1000);
-});
-
-client.login(DISCORD_TOKEN);
+    if (!canalDiscord) {
+      console.log("Canal do
