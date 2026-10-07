@@ -9,21 +9,25 @@ const parser = new Parser();
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
-const YOUTUBE_HANDLE = "@zechinxb";
 
-let ultimoVideo = null;
+const YOUTUBE_HANDLES = [
+  "@zechinxb",
+  "@zgameclipes"
+];
 
-async function verificarYouTube() {
+const ultimosVideos = {};
+
+async function verificarCanal(handle) {
   try {
-    // Descobre automaticamente o canal através do @handle
+    // Descobre automaticamente o ID do canal através do @handle
     const pagina = await fetch(
-      `https://www.youtube.com/${YOUTUBE_HANDLE}`
+      `https://www.youtube.com/${handle}`
     ).then(res => res.text());
 
     const match = pagina.match(/"channelId":"(UC[^"]+)"/);
 
     if (!match) {
-      console.log("Não foi possível encontrar o ID do canal.");
+      console.log(`Não foi possível encontrar o canal ${handle}.`);
       return;
     }
 
@@ -37,15 +41,20 @@ async function verificarYouTube() {
 
     const video = feed.items[0];
 
-    if (ultimoVideo === null) {
-      ultimoVideo = video.id;
-      console.log("Vídeo inicial registrado:", video.title);
+    // Primeiro acesso: registra o vídeo atual sem enviar notificação
+    if (!ultimosVideos[handle]) {
+      ultimosVideos[handle] = video.id;
+      console.log(
+        `Vídeo inicial registrado (${handle}): ${video.title}`
+      );
       return;
     }
 
-    if (video.id === ultimoVideo) return;
+    // Nada novo
+    if (video.id === ultimosVideos[handle]) return;
 
-    ultimoVideo = video.id;
+    // Atualiza o último vídeo
+    ultimosVideos[handle] = video.id;
 
     const canal = await client.channels.fetch(DISCORD_CHANNEL_ID);
 
@@ -56,17 +65,30 @@ async function verificarYouTube() {
 
     const embed = new EmbedBuilder()
       .setTitle("📢 Novo conteúdo no YouTube!")
-      .setDescription(`**${video.title}**`)
+      .setDescription(
+        `**${video.title}**\n\nCanal: **${handle}**`
+      )
       .setURL(video.link)
       .setTimestamp(new Date(video.pubDate))
       .setFooter({ text: "ZGame • YouTube" });
 
     await canal.send({ embeds: [embed] });
 
-    console.log("Novo conteúdo enviado:", video.title);
+    console.log(
+      `Novo conteúdo enviado (${handle}): ${video.title}`
+    );
 
   } catch (erro) {
-    console.error("Erro ao verificar o YouTube:", erro.message);
+    console.error(
+      `Erro ao verificar ${handle}:`,
+      erro.message
+    );
+  }
+}
+
+async function verificarYouTube() {
+  for (const handle of YOUTUBE_HANDLES) {
+    await verificarCanal(handle);
   }
 }
 
