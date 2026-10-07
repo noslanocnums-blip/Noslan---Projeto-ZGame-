@@ -27,7 +27,7 @@ async function verificarCanal(canalYT) {
   try {
     let channelId = canalYT.id;
 
-    // Descobre automaticamente o ID do @zechinxb
+    // Descobre automaticamente o ID do canal
     if (!channelId) {
       const pagina = await fetch(
         `https://www.youtube.com/${canalYT.handle}`
@@ -55,7 +55,7 @@ async function verificarCanal(canalYT) {
 
     const video = feed.items[0];
 
-    // Primeiro acesso: registra o vídeo atual
+    // Primeira verificação: apenas registra o vídeo atual
     if (!ultimosVideos[canalYT.handle]) {
       ultimosVideos[canalYT.handle] = video.id;
 
@@ -66,7 +66,7 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // Nada novo
+    // Não há vídeo novo
     if (video.id === ultimosVideos[canalYT.handle]) {
       return;
     }
@@ -83,13 +83,7 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    /*
-     * Tenta descobrir o ID do vídeo de duas formas:
-     *
-     * 1. Pelo video.id do RSS
-     * 2. Pelo link do vídeo
-     */
-
+    // Tenta obter o ID do vídeo
     let videoId = null;
 
     if (video.id) {
@@ -98,6 +92,7 @@ async function verificarCanal(canalYT) {
         .trim();
     }
 
+    // Se não encontrou pelo ID, tenta pelo link
     if (!videoId || videoId.length !== 11) {
       const match = video.link?.match(
         /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
@@ -108,12 +103,12 @@ async function verificarCanal(canalYT) {
       }
     }
 
-    // Link oficial do vídeo
+    // Link oficial
     const videoLink = videoId
       ? `https://www.youtube.com/watch?v=${videoId}`
       : video.link;
 
-    // Thumbnail oficial do YouTube
+    // Thumbnail
     const thumbnail = videoId
       ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
       : null;
@@ -131,12 +126,53 @@ async function verificarCanal(canalYT) {
         text: "ZGame • YouTube"
       });
 
-    // Adiciona a thumbnail quando o ID foi encontrado
+    // Adiciona thumbnail
     if (thumbnail) {
       embed.setImage(thumbnail);
     }
 
-    // Envia a divulgação
+    // Envia para o Discord
     await canalDiscord.send({
       content: "@everyone",
-     
+      embeds: [embed],
+      allowedMentions: {
+        parse: ["everyone"]
+      }
+    });
+
+    console.log(
+      `Novo conteúdo enviado (${canalYT.handle}): ${video.title}`
+    );
+
+    console.log(
+      `ID do vídeo: ${videoId || "não encontrado"}`
+    );
+
+    console.log(
+      `Link: ${videoLink}`
+    );
+
+  } catch (erro) {
+    console.error(
+      `Erro ao verificar ${canalYT.handle}: ${erro.message}`
+    );
+  }
+}
+
+async function verificarYouTube() {
+  for (const canal of YOUTUBE_CHANNELS) {
+    await verificarCanal(canal);
+  }
+}
+
+client.once("ready", async () => {
+  console.log(`Online como ${client.user.tag}`);
+
+  // Primeira verificação
+  await verificarYouTube();
+
+  // Verifica a cada 30 segundos
+  setInterval(verificarYouTube, 30 * 1000);
+});
+
+client.login(DISCORD_TOKEN);
