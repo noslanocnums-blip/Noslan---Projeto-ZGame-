@@ -55,7 +55,7 @@ async function verificarCanal(canalYT) {
 
     const video = feed.items[0];
 
-    // Primeiro acesso: registra o vídeo atual sem divulgar
+    // Primeiro acesso: registra o vídeo atual
     if (!ultimosVideos[canalYT.handle]) {
       ultimosVideos[canalYT.handle] = video.id;
 
@@ -83,12 +83,37 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // Pega o ID real do vídeo
-    const videoId = video.link.match(
-      /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
-    )?.[1];
+    /*
+     * Tenta descobrir o ID do vídeo de duas formas:
+     *
+     * 1. Pelo video.id do RSS
+     * 2. Pelo link do vídeo
+     */
 
-    // Thumbnail do YouTube
+    let videoId = null;
+
+    if (video.id) {
+      videoId = video.id
+        .replace("yt:video:", "")
+        .trim();
+    }
+
+    if (!videoId || videoId.length !== 11) {
+      const match = video.link?.match(
+        /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
+      );
+
+      if (match) {
+        videoId = match[1];
+      }
+    }
+
+    // Link oficial do vídeo
+    const videoLink = videoId
+      ? `https://www.youtube.com/watch?v=${videoId}`
+      : video.link;
+
+    // Thumbnail oficial do YouTube
     const thumbnail = videoId
       ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
       : null;
@@ -98,51 +123,20 @@ async function verificarCanal(canalYT) {
       .setDescription(
         `**${video.title || "Novo vídeo no YouTube!"}**\n\nCanal: **${canalYT.handle}**`
       )
-      .setURL(video.link)
-      .setTimestamp(new Date(video.pubDate))
+      .setURL(videoLink)
+      .setTimestamp(
+        video.pubDate ? new Date(video.pubDate) : new Date()
+      )
       .setFooter({
         text: "ZGame • YouTube"
       });
 
-    // Adiciona a thumbnail
+    // Adiciona a thumbnail quando o ID foi encontrado
     if (thumbnail) {
       embed.setImage(thumbnail);
     }
 
-    // Envia a divulgação com @everyone
+    // Envia a divulgação
     await canalDiscord.send({
       content: "@everyone",
-      embeds: [embed],
-      allowedMentions: {
-        parse: ["everyone"]
-      }
-    });
-
-    console.log(
-      `Novo conteúdo enviado (${canalYT.handle}): ${video.title}`
-    );
-
-  } catch (erro) {
-    console.error(
-      `Erro ao verificar ${canalYT.handle}: ${erro.message}`
-    );
-  }
-}
-
-async function verificarYouTube() {
-  for (const canal of YOUTUBE_CHANNELS) {
-    await verificarCanal(canal);
-  }
-}
-
-client.once("ready", async () => {
-  console.log(`Online como ${client.user.tag}`);
-
-  // Primeira verificação
-  await verificarYouTube();
-
-  // Verifica os canais a cada 30 segundos
-  setInterval(verificarYouTube, 30 * 1000);
-});
-
-client.login(DISCORD_TOKEN);
+     
