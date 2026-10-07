@@ -27,6 +27,7 @@ async function verificarCanal(canalYT) {
   try {
     let channelId = canalYT.id;
 
+    // Descobre automaticamente o ID do @zechinxb
     if (!channelId) {
       const pagina = await fetch(
         `https://www.youtube.com/${canalYT.handle}`
@@ -54,6 +55,7 @@ async function verificarCanal(canalYT) {
 
     const video = feed.items[0];
 
+    // Primeiro acesso: registra o vídeo atual sem divulgar
     if (!ultimosVideos[canalYT.handle]) {
       ultimosVideos[canalYT.handle] = video.id;
 
@@ -64,10 +66,12 @@ async function verificarCanal(canalYT) {
       return;
     }
 
+    // Nada novo
     if (video.id === ultimosVideos[canalYT.handle]) {
       return;
     }
 
+    // Novo vídeo encontrado
     ultimosVideos[canalYT.handle] = video.id;
 
     const canalDiscord = await client.channels.fetch(
@@ -84,6 +88,7 @@ async function verificarCanal(canalYT) {
       /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
     )?.[1];
 
+    // Thumbnail do YouTube
     const thumbnail = videoId
       ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
       : null;
@@ -104,8 +109,13 @@ async function verificarCanal(canalYT) {
       embed.setImage(thumbnail);
     }
 
+    // Envia a divulgação com @everyone
     await canalDiscord.send({
-      embeds: [embed]
+      content: "@everyone",
+      embeds: [embed],
+      allowedMentions: {
+        parse: ["everyone"]
+      }
     });
 
     console.log(
@@ -128,9 +138,11 @@ async function verificarYouTube() {
 client.once("ready", async () => {
   console.log(`Online como ${client.user.tag}`);
 
+  // Primeira verificação
   await verificarYouTube();
 
-  setInterval(verificarYouTube, 60 * 1000);
+  // Verifica os canais a cada 30 segundos
+  setInterval(verificarYouTube, 30 * 1000);
 });
 
 client.login(DISCORD_TOKEN);
