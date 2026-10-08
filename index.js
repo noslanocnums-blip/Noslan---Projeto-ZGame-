@@ -13,7 +13,7 @@ const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 const YOUTUBE_CHANNELS = [
   {
     handle: "@zechinxb",
-    id: null
+    id: "UCPbyZugeRr0uILdWvh8WrPA"
   },
   {
     handle: "@zgameclipes",
@@ -26,25 +26,7 @@ const videosEnviados = new Set();
 
 async function verificarCanal(canalYT) {
   try {
-    let channelId = canalYT.id;
-
-    // Descobre automaticamente o ID do @zechinxb
-    if (!channelId) {
-      const pagina = await fetch(
-        `https://www.youtube.com/${canalYT.handle}`
-      ).then(res => res.text());
-
-      const match = pagina.match(/"channelId":"(UC[^"]+)"/);
-
-      if (!match) {
-        console.log(
-          `Não foi possível encontrar ${canalYT.handle}`
-        );
-        return;
-      }
-
-      channelId = match[1];
-    }
+    const channelId = canalYT.id;
 
     const feed = await parser.parseURL(
       `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
@@ -119,15 +101,14 @@ async function verificarCanal(canalYT) {
 
     /*
      * Marca como enviado ANTES de mandar.
-     * Assim, se houver outra verificação enquanto
-     * o envio estiver acontecendo, ele não duplica.
+     * Isso evita duplicações.
      */
     videosEnviados.add(videoId);
 
     /*
-     * Mensagem normal, sem Embed.
+     * Mensagem normal.
      *
-     * O Discord vai gerar automaticamente
+     * O Discord gera automaticamente
      * a prévia/thumbnail do YouTube.
      */
     await canalDiscord.send({
@@ -143,37 +124,4 @@ async function verificarCanal(canalYT) {
     });
 
     console.log(
-      `Novo vídeo enviado (${canalYT.handle}): ${video.title}`
-    );
-
-  } catch (erro) {
-    console.error(
-      `Erro ao verificar ${canalYT.handle}: ${erro.message}`
-    );
-  }
-}
-
-async function verificarYouTube() {
-  for (const canal of YOUTUBE_CHANNELS) {
-    await verificarCanal(canal);
-  }
-}
-
-client.once("ready", async () => {
-
-  console.log(
-    `Online como ${client.user.tag}`
-  );
-
-  // Primeira verificação
-  await verificarYouTube();
-
-  // Verifica a cada 30 segundos
-  setInterval(
-    verificarYouTube,
-    30 * 1000
-  );
-
-});
-
-client.login(DISCORD_TOKEN);
+      `Novo vídeo enviado (${canalYT.handle}): ${
