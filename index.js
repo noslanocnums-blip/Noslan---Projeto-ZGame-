@@ -1,4 +1,5 @@
-const { Client, GatewayIntentBits } = require("discord.js");
+
+const { Client, GatewayIntentBits, Events } = require("discord.js");
 const Parser = require("rss-parser");
 
 const client = new Client({
@@ -16,6 +17,8 @@ const parser = new Parser({
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
+const SITE_URL = "https://zgame-jogos-mobile.netlify.app/";
+
 const YOUTUBE_CHANNELS = [
   {
     handle: "@zechinxb",
@@ -29,6 +32,48 @@ const YOUTUBE_CHANNELS = [
 
 const videosEnviados = new Set();
 const livesEnviadas = new Set();
+
+// =========================
+// COMANDO /SITE
+// =========================
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName !== "site") return;
+
+  if (interaction.channelId !== DISCORD_CHANNEL_ID) {
+    await interaction.reply({
+      content: "Use este comando no canal de divulgações.",
+      ephemeral: true
+    });
+    return;
+  }
+
+  try {
+    await interaction.channel.send(
+      "🌐 Confira o site do ZGame e veja os jogos disponíveis!\n\n" +
+      SITE_URL
+    );
+
+    await interaction.reply({
+      content: "Site divulgado com sucesso!",
+      ephemeral: true
+    });
+  } catch (erro) {
+    console.error("Erro ao divulgar o site:", erro);
+
+    if (!interaction.replied) {
+      await interaction.reply({
+        content: "Não consegui publicar o site. Confira as permissões do bot.",
+        ephemeral: true
+      });
+    }
+  }
+});
+
+// =========================
+// VERIFICAR CANAL DO YOUTUBE
+// =========================
 
 async function verificarCanal(canalYT) {
   try {
@@ -93,8 +138,6 @@ async function verificarCanal(canalYT) {
         const videoLink =
           `https://www.youtube.com/watch?v=${videoId}`;
 
-        livesEnviadas.add(videoId);
-
         await canalDiscord.send({
           content:
             `@everyone\n\n` +
@@ -106,9 +149,9 @@ async function verificarCanal(canalYT) {
           }
         });
 
-        console.log(
-          `LIVE detectada: ${video.title}`
-        );
+        livesEnviadas.add(videoId);
+
+        console.log(`LIVE detectada: ${video.title}`);
       }
     }
 
@@ -143,8 +186,6 @@ async function verificarCanal(canalYT) {
     const videoLink =
       `https://www.youtube.com/watch?v=${videoId}`;
 
-    videosEnviados.add(videoId);
-
     await canalDiscord.send({
       content:
         `@everyone\n\n` +
@@ -155,6 +196,8 @@ async function verificarCanal(canalYT) {
         parse: ["everyone"]
       }
     });
+
+    videosEnviados.add(videoId);
 
     console.log(
       `Novo vídeo enviado (${canalYT.handle}): ${video.title}`
@@ -167,16 +210,22 @@ async function verificarCanal(canalYT) {
   }
 }
 
+// =========================
+// VERIFICAR TODOS OS CANAIS
+// =========================
+
 async function verificarYouTube() {
   for (const canal of YOUTUBE_CHANNELS) {
     await verificarCanal(canal);
   }
 }
 
-client.once("ready", async () => {
-  console.log(
-    `Online como ${client.user.tag}`
-  );
+// =========================
+// BOT ONLINE
+// =========================
+
+client.once(Events.ClientReady, async () => {
+  console.log(`Online como ${client.user.tag}`);
 
   await verificarYouTube();
 
