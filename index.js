@@ -5,7 +5,13 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-const parser = new Parser();
+const parser = new Parser({
+  customFields: {
+    item: [
+      ["yt:liveBroadcastContent", "liveBroadcastContent"]
+    ]
+  }
+});
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
@@ -22,6 +28,7 @@ const YOUTUBE_CHANNELS = [
 ];
 
 const videosEnviados = new Set();
+const livesEnviadas = new Set();
 
 async function verificarCanal(canalYT) {
   try {
@@ -61,6 +68,53 @@ async function verificarCanal(canalYT) {
       );
       return;
     }
+
+    // =========================
+    // DETECÇÃO DE LIVE
+    // =========================
+
+    const liveStatus =
+      video.liveBroadcastContent || "none";
+
+    if (
+      canalYT.handle === "@zechinxb" &&
+      liveStatus === "live"
+    ) {
+      if (!livesEnviadas.has(videoId)) {
+        const canalDiscord = await client.channels.fetch(
+          DISCORD_CHANNEL_ID
+        );
+
+        if (!canalDiscord) {
+          console.log("Canal do Discord não encontrado.");
+          return;
+        }
+
+        const videoLink =
+          `https://www.youtube.com/watch?v=${videoId}`;
+
+        livesEnviadas.add(videoId);
+
+        await canalDiscord.send({
+          content:
+            `@everyone\n\n` +
+            `🔴 **O @zechinxb está AO VIVO!**\n\n` +
+            `**${video.title || "Live iniciada!"}**\n\n` +
+            `👉 ${videoLink}`,
+          allowedMentions: {
+            parse: ["everyone"]
+          }
+        });
+
+        console.log(
+          `LIVE detectada: ${video.title}`
+        );
+      }
+    }
+
+    // =========================
+    // SISTEMA DE VÍDEOS
+    // =========================
 
     if (videosEnviados.has(videoId)) {
       return;
