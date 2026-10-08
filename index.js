@@ -21,7 +21,6 @@ const YOUTUBE_CHANNELS = [
   }
 ];
 
-// Guarda os vídeos que já foram enviados
 const videosEnviados = new Set();
 
 async function verificarCanal(canalYT) {
@@ -36,10 +35,8 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // Pega somente o vídeo mais recente
     const video = feed.items[0];
 
-    // ID do vídeo
     let videoId = null;
 
     if (video.id) {
@@ -48,7 +45,6 @@ async function verificarCanal(canalYT) {
         .trim();
     }
 
-    // Tenta encontrar pelo link
     if (!videoId || videoId.length !== 11) {
       const match = video.link?.match(
         /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
@@ -66,15 +62,10 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // Se já foi enviado, não envia novamente
     if (videosEnviados.has(videoId)) {
       return;
     }
 
-    /*
-     * Primeira inicialização:
-     * registra o vídeo atual sem enviar.
-     */
     if (!videosEnviados.has(`INICIADO_${canalYT.handle}`)) {
       videosEnviados.add(`INICIADO_${canalYT.handle}`);
       videosEnviados.add(videoId);
@@ -95,33 +86,50 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // Link oficial do vídeo
     const videoLink =
       `https://www.youtube.com/watch?v=${videoId}`;
 
-    /*
-     * Marca como enviado ANTES de mandar.
-     * Isso evita duplicações.
-     */
     videosEnviados.add(videoId);
 
-    /*
-     * Mensagem normal.
-     *
-     * O Discord gera automaticamente
-     * a prévia/thumbnail do YouTube.
-     */
     await canalDiscord.send({
       content:
         `@everyone\n\n` +
         `🔴 **O ${canalYT.handle} acabou de postar!**\n\n` +
         `**${video.title || "Novo vídeo!"}**\n\n` +
         `👉 ${videoLink}`,
-
       allowedMentions: {
         parse: ["everyone"]
       }
     });
 
     console.log(
-      `Novo vídeo enviado (${canalYT.handle}): ${
+      `Novo vídeo enviado (${canalYT.handle}): ${video.title}`
+    );
+
+  } catch (erro) {
+    console.error(
+      `Erro ao verificar ${canalYT.handle}: ${erro.message}`
+    );
+  }
+}
+
+async function verificarYouTube() {
+  for (const canal of YOUTUBE_CHANNELS) {
+    await verificarCanal(canal);
+  }
+}
+
+client.once("ready", async () => {
+  console.log(
+    `Online como ${client.user.tag}`
+  );
+
+  await verificarYouTube();
+
+  setInterval(
+    verificarYouTube,
+    30 * 1000
+  );
+});
+
+client.login(DISCORD_TOKEN);
