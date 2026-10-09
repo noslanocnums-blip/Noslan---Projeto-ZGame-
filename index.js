@@ -1,5 +1,5 @@
 
-const {
+    const {
   Client,
   GatewayIntentBits,
   Events,
@@ -22,8 +22,13 @@ const parser = new Parser({
   }
 });
 
+// =========================
+// VARIÁVEIS DE AMBIENTE
+// =========================
+
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+const SITE_CHANNEL_ID = process.env.SITE_CHANNEL_ID;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
@@ -69,6 +74,7 @@ async function registrarComandoSite() {
 
   try {
     const existentes = await rest.get(rota);
+
     const comandoExistente = existentes.find(
       c => c.name === "site"
     );
@@ -103,9 +109,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "site") return;
 
-  if (interaction.channelId !== DISCORD_CHANNEL_ID) {
+  // Permitir somente no canal configurado
+  if (
+    !SITE_CHANNEL_ID ||
+    interaction.channelId !== SITE_CHANNEL_ID
+  ) {
     await interaction.reply({
-      content: "Use este comando no canal de divulgações.",
+      content: "Use este comando somente no canal #jogos-mobile.",
       ephemeral: true
     });
     return;
