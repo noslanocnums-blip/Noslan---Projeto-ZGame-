@@ -1,5 +1,13 @@
 
-const { Client, GatewayIntentBits, Events } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Events,
+  REST,
+  Routes,
+  SlashCommandBuilder
+} = require("discord.js");
+
 const Parser = require("rss-parser");
 
 const client = new Client({
@@ -16,6 +24,8 @@ const parser = new Parser({
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const SITE_URL = "https://zgame-jogos-mobile.netlify.app/";
 
@@ -34,7 +44,59 @@ const videosEnviados = new Set();
 const livesEnviadas = new Set();
 
 // =========================
-// COMANDO /SITE
+// REGISTRAR COMANDO /SITE
+// =========================
+
+async function registrarComandoSite() {
+  if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID) {
+    console.error(
+      "Faltam as variáveis DISCORD_TOKEN, CLIENT_ID ou GUILD_ID."
+    );
+    return;
+  }
+
+  const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+
+  const rota = Routes.applicationGuildCommands(
+    CLIENT_ID,
+    GUILD_ID
+  );
+
+  const comando = new SlashCommandBuilder()
+    .setName("site")
+    .setDescription("Divulga o site do ZGame")
+    .toJSON();
+
+  try {
+    const existentes = await rest.get(rota);
+    const comandoExistente = existentes.find(
+      c => c.name === "site"
+    );
+
+    if (comandoExistente) {
+      await rest.patch(
+        Routes.applicationGuildCommand(
+          CLIENT_ID,
+          GUILD_ID,
+          comandoExistente.id
+        ),
+        { body: comando }
+      );
+    } else {
+      await rest.post(rota, { body: comando });
+    }
+
+    console.log("Comando /site registrado com sucesso!");
+  } catch (erro) {
+    console.error(
+      "Erro ao registrar o comando /site:",
+      erro
+    );
+  }
+}
+
+// =========================
+// EXECUTAR COMANDO /SITE
 // =========================
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -227,6 +289,7 @@ async function verificarYouTube() {
 client.once(Events.ClientReady, async () => {
   console.log(`Online como ${client.user.tag}`);
 
+  await registrarComandoSite();
   await verificarYouTube();
 
   setInterval(
