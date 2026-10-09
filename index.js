@@ -299,6 +299,9 @@ async function verificarYouTube() {
 client.once(Events.ClientReady, async () => {
   console.log(`Online como ${client.user.tag}`);
 
+client.user.setActivity("Eu sou a velocidade!");
+
+
   await registrarComandoSite();
   await verificarYouTube();
 
