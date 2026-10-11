@@ -1,5 +1,5 @@
 
-    const {
+const {
   Client,
   GatewayIntentBits,
   Events,
@@ -34,6 +34,9 @@ const GUILD_ID = process.env.GUILD_ID;
 
 const SITE_URL = "https://zgame-jogos-mobile.netlify.app/";
 
+const TUTORIAL_URL =
+  "https://youtube.com/shorts/5mICKOKDADo?si=YqLW_eCPqEWakYJL";
+
 const YOUTUBE_CHANNELS = [
   {
     handle: "@zechinxb",
@@ -49,10 +52,10 @@ const videosEnviados = new Set();
 const livesEnviadas = new Set();
 
 // =========================
-// REGISTRAR COMANDO /SITE
+// REGISTRAR COMANDOS
 // =========================
 
-async function registrarComandoSite() {
+async function registrarComandos() {
   if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID) {
     console.error(
       "Faltam as variáveis DISCORD_TOKEN, CLIENT_ID ou GUILD_ID."
@@ -67,79 +70,101 @@ async function registrarComandoSite() {
     GUILD_ID
   );
 
-  const comando = new SlashCommandBuilder()
-    .setName("site")
-    .setDescription("Divulga o site do ZGame")
-    .toJSON();
+  const comandos = [
+    new SlashCommandBuilder()
+      .setName("site")
+      .setDescription("Divulga o site do ZGame")
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("tutorial")
+      .setDescription("Envia o link do tutorial no YouTube")
+      .toJSON()
+  ];
 
   try {
     const existentes = await rest.get(rota);
 
-    const comandoExistente = existentes.find(
-      c => c.name === "site"
-    );
-
-    if (comandoExistente) {
-      await rest.patch(
-        Routes.applicationGuildCommand(
-          CLIENT_ID,
-          GUILD_ID,
-          comandoExistente.id
-        ),
-        { body: comando }
+    for (const comando of comandos) {
+      const comandoExistente = existentes.find(
+        c => c.name === comando.name
       );
-    } else {
-      await rest.post(rota, { body: comando });
-    }
 
-    console.log("Comando /site registrado com sucesso!");
+      if (comandoExistente) {
+        await rest.patch(
+          Routes.applicationGuildCommand(
+            CLIENT_ID,
+            GUILD_ID,
+            comandoExistente.id
+          ),
+          { body: comando }
+        );
+      } else {
+        await rest.post(rota, { body: comando });
+      }
+
+      console.log(`Comando /${comando.name} registrado!`);
+    }
   } catch (erro) {
-    console.error(
-      "Erro ao registrar o comando /site:",
-      erro
-    );
+    console.error("Erro ao registrar comandos:", erro);
   }
 }
 
 // =========================
-// EXECUTAR COMANDO /SITE
+// EXECUTAR COMANDOS
 // =========================
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName !== "site") return;
 
-  // Permitir somente no canal configurado
-  if (
-    !SITE_CHANNEL_ID ||
-    interaction.channelId !== SITE_CHANNEL_ID
-  ) {
-    await interaction.reply({
-      content: "Use este comando somente no canal #jogos-mobile.",
-      ephemeral: true
-    });
+  // COMANDO /SITE
+  if (interaction.commandName === "site") {
+    if (
+      !SITE_CHANNEL_ID ||
+      interaction.channelId !== SITE_CHANNEL_ID
+    ) {
+      await interaction.reply({
+        content: "Use este comando somente no canal #jogos-mobile.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    try {
+      await interaction.channel.send(
+        "🌐 Confira o site do ZGame e veja os jogos disponíveis!\n\n" +
+        SITE_URL
+      );
+
+      await interaction.reply({
+        content: "Site divulgado com sucesso!",
+        ephemeral: true
+      });
+    } catch (erro) {
+      console.error("Erro ao divulgar o site:", erro);
+
+      if (!interaction.replied) {
+        await interaction.reply({
+          content: "Não consegui publicar o site. Confira as permissões do bot.",
+          ephemeral: true
+        });
+      }
+    }
+
     return;
   }
 
-  try {
-    await interaction.channel.send(
-      "🌐 Confira o site do ZGame e veja os jogos disponíveis!\n\n" +
-      SITE_URL
-    );
-
-    await interaction.reply({
-      content: "Site divulgado com sucesso!",
-      ephemeral: true
-    });
-  } catch (erro) {
-    console.error("Erro ao divulgar o site:", erro);
-
-    if (!interaction.replied) {
-      await interaction.reply({
-        content: "Não consegui publicar o site. Confira as permissões do bot.",
-        ephemeral: true
-      });
+  // COMANDO /TUTORIAL
+  if (interaction.commandName === "tutorial") {
+    try {
+      await interaction.reply(
+        "🎮 **Tutorial do YouTube:**\n" + TUTORIAL_URL
+      );
+    } catch (erro) {
+      console.error("Erro ao enviar o tutorial:", erro);
     }
+
+    return;
   }
 });
 
@@ -186,9 +211,7 @@ async function verificarCanal(canalYT) {
       return;
     }
 
-    // =========================
     // DETECÇÃO DE LIVE
-    // =========================
 
     const liveStatus =
       video.liveBroadcastContent || "none";
@@ -227,9 +250,7 @@ async function verificarCanal(canalYT) {
       }
     }
 
-    // =========================
     // SISTEMA DE VÍDEOS
-    // =========================
 
     if (videosEnviados.has(videoId)) {
       return;
@@ -299,10 +320,9 @@ async function verificarYouTube() {
 client.once(Events.ClientReady, async () => {
   console.log(`Online como ${client.user.tag}`);
 
-client.user.setActivity("GTA6 ⭐⭐⭐⭐⭐⭐");
+  client.user.setActivity("GTA6 ⭐⭐⭐⭐⭐⭐");
 
-
-  await registrarComandoSite();
+  await registrarComandos();
   await verificarYouTube();
 
   setInterval(
