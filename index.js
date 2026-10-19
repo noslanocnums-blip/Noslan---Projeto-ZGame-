@@ -9,9 +9,20 @@ const {
 } = require("discord.js");
 
 const Parser = require("rss-parser");
+const sharp = require("sharp");
+const path = require("path");
+const fs = require("fs");
+
+// =========================
+// CONFIGURAÇÃO DO BOT
+// =========================
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 const parser = new Parser({
@@ -50,6 +61,253 @@ const YOUTUBE_CHANNELS = [
 
 const videosEnviados = new Set();
 const livesEnviadas = new Set();
+
+// =========================
+// DETECTOR DE IMAGENS
+// =========================
+
+// As quatro referências devem estar nesta pasta.
+const PASTA_REFERENCIAS = path.join(__dirname, "references");
+
+const ARQUIVOS_REFERENCIAS = [
+  "ref1.png",
+  "ref2.png",
+  "ref3.png",
+  "ref4.png"
+];
+
+// Quanto maior o valor, mais parecidas as imagens
+// precisam ser para serem consideradas correspondentes.
+const LIMITE_SIMILARIDADE = 0.92;
+
+// Todas as imagens são normalizadas para o mesmo tamanho.
+const TAMANHO_COMPARACAO = 32;
+
+let referenciasVisuais = [];
+let detectorPronto = false;
+
+async function extrairPixels(buffer) {
+  return sharp(buffer)
+    .rotate()
+    .resize(TAMANHO_COMPARACAO, TAMANHO_COMPARACAO, {
+      fit: "fill"
+    })
+    .removeAlpha()
+    .toColourspace("srgb")
+    .raw()
+    .toBuffer();
+}
+
+async function carregarReferencias() {
+  referenciasVisuais = [];
+
+  for (const nomeArquivo of ARQUIVOS_REFERENCIAS) {
+    const caminho = path.join(PASTA_REFERENCIAS, nomeArquivo);
+
+    if (!fs.existsSync(caminho)) {
+      console.warn(
+        `[Detector] Referência não encontrada: ${caminho}`
+      );
+      continue;
+    }
+
+    try {
+      const buffer = fs.readFileSync(caminho);
+      const pixels = await extrairPixels(buffer);
+
+      referenciasVisuais.push({
+        nome: nomeArquivo,
+        pixels
+      });
+
+      console.log(`[Detector] Referência carregada: ${nomeArquivo}`);
+    } catch (erro) {
+      console.error(
+        `[Detector] Erro ao carregar ${nomeArquivo}:`,
+        erro.message
+      );
+    }
+  }
+
+  detectorPronto = referenciasVisuais.length > 0;
+
+  if (!detectorPronto) {
+    console.warn(
+      "[Detector] Nenhuma referência foi carregada. " +
+      "A detecção de imagens ficará desativada."
+    );
+  } else {
+    console.log(
+      `[Detector] Pronto com ${referenciasVisuais.length} referência(s).`
+    );
+  }
+}
+
+// Compara a diferença média entre os pixels.
+// Retorna um valor entre 0 e 1.
+// 1 significa pixels iguais; valores menores indicam diferenças.
+function calcularSimilaridade(pixelsA, pixelsB) {
+  if (pixelsA.length !== pixelsB.length || pixelsA.length === 0) {
+    return 0;
+  }
+
+  let diferencaTotal = 0;
+
+  for (let i = 0; i < pixelsA.length; i++) {
+    diferencaTotal += Math.abs(pixelsA[i] - pixelsB[i]);
+  }
+
+  const diferencaMedia =
+    diferencaTotal / pixelsA.length;
+
+  return 1 - diferencaMedia / 255;
+}
+
+async function verificarImagem(buffer) {
+  if (!detectorPronto) {
+    return {
+      encontrada: false,
+      motivo: "detector_indisponivel"
+    };
+  }
+
+  try {
+    const pixelsImagem = await extrairPixels(buffer);
+
+    let melhorCorrespondencia = {
+      encontrada: false,
+      referencia: null,
+      similaridade: 0
+    };
+
+    for (const referencia of referenciasVisuais) {
+      const similaridade = calcularSimilaridade(
+        pixelsImagem,
+        referencia.pixels
+      );
+
+      if (similaridade > melhorCorrespondencia.similaridade) {
+        melhorCorrespondencia = {
+          encontrada: similaridade >= LIMITE_SIMILARIDADE,
+          referencia: referencia.nome,
+          similaridade
+        };
+      }
+    }
+
+    return melhorCorrespondencia;
+  } catch (erro) {
+    console.error(
+      "[Detector] Não foi possível analisar uma imagem:",
+      erro.message
+    );
+
+    return {
+      encontrada: false,
+      motivo: "erro_ao_analisar"
+    };
+  }
+}
+
+function pareceImagem(attachment) {
+  const tipo = attachment.contentType || "";
+
+  if (tipo.startsWith("image/")) {
+    return true;
+  }
+
+  return /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(
+    attachment.name || ""
+  );
+}
+
+// Verifica todas as imagens da mensagem.
+client.on(Events.MessageCreate, async (message) => {
+  if (!message.guild || message.author.bot) return;
+  if (!message.attachments.size) return;
+  if (!detectorPronto) return;
+
+  const anexos = [...message.attachments.values()]
+    .filter(pareceImagem);
+
+  if (anexos.length === 0) return;
+
+  for (const anexo of anexos) {
+    try {
+      const resposta = await fetch(anexo.url);
+
+      if (!resposta.ok) {
+        console.warn(
+          `[Detector] Falha ao baixar ${anexo.name}: HTTP ${resposta.status}`
+        );
+        continue;
+      }
+
+      const arrayBuffer = await resposta.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Evita tentar processar arquivos excessivamente grandes.
+      if (buffer.length > 15 * 1024 * 1024) {
+        console.warn(
+          `[Detector] Imagem muito grande, ignorada: ${anexo.name}`
+        );
+        continue;
+      }
+
+      const resultado = await verificarImagem(buffer);
+
+      if (!resultado.encontrada) continue;
+
+      console.log(
+        `[Detector] Correspondência encontrada: ${anexo.name} ` +
+        `com ${resultado.referencia} ` +
+        `(${(resultado.similaridade * 100).toFixed(1)}%)`
+      );
+
+      // Apaga a mensagem inteira, inclusive outros anexos.
+      try {
+        await message.delete();
+      } catch (erro) {
+        console.error(
+          "[Detector] Não consegui apagar a mensagem. " +
+          "Verifique a permissão Gerenciar mensagens:",
+          erro.message
+        );
+
+        return;
+      }
+
+      // Avisa no canal depois de remover a mensagem.
+      try {
+        const aviso = await message.channel.send({
+          content:
+            `⚠️ <@${message.author.id}>, sua mensagem foi removida ` +
+            "porque uma imagem correspondeu a uma referência proibida.",
+          allowedMentions: {
+            users: [message.author.id]
+          }
+        });
+
+        // Tenta apagar o aviso após 10 segundos.
+        setTimeout(() => {
+          aviso.delete().catch(() => {});
+        }, 10_000);
+      } catch (erro) {
+        console.error(
+          "[Detector] Não consegui enviar o aviso:",
+          erro.message
+        );
+      }
+
+      return;
+    } catch (erro) {
+      console.error(
+        `[Detector] Erro ao verificar ${anexo.name}:`,
+        erro.message
+      );
+    }
+  }
+});
 
 // =========================
 // REGISTRAR COMANDOS
@@ -145,7 +403,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (!interaction.replied) {
         await interaction.reply({
-          content: "Não consegui publicar o site. Confira as permissões do bot.",
+          content:
+            "Não consegui publicar o site. Confira as permissões do bot.",
           ephemeral: true
         });
       }
@@ -212,9 +471,7 @@ async function verificarCanal(canalYT) {
     }
 
     // DETECÇÃO DE LIVE
-
-    const liveStatus =
-      video.liveBroadcastContent || "none";
+    const liveStatus = video.liveBroadcastContent || "none";
 
     if (
       canalYT.handle === "@zechinxb" &&
@@ -251,7 +508,6 @@ async function verificarCanal(canalYT) {
     }
 
     // SISTEMA DE VÍDEOS
-
     if (videosEnviados.has(videoId)) {
       return;
     }
@@ -322,6 +578,7 @@ client.once(Events.ClientReady, async () => {
 
   client.user.setActivity("GTA6 ⭐⭐⭐⭐⭐⭐");
 
+  await carregarReferencias();
   await registrarComandos();
   await verificarYouTube();
 
