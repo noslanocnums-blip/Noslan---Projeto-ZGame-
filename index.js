@@ -282,7 +282,7 @@ client.on(Events.MessageCreate, async (message) => {
         const aviso = await message.channel.send({
           content:
             `⚠️ <@${message.author.id}>, sua mensagem foi removida ` +
-            "porque uma imagem correspondeu a uma referência proibida.",
+            "As imagens enviadas não foram autorizadas pela moderação.",
           allowedMentions: {
             users: [message.author.id]
           }
@@ -576,7 +576,7 @@ async function verificarYouTube() {
 client.once(Events.ClientReady, async () => {
   console.log(`Online como ${client.user.tag}`);
 
-  client.user.setActivity("GTA6 ⭐⭐⭐⭐⭐⭐");
+  client.user.setActivity("De ladinho.");
 
   await carregarReferencias();
   await registrarComandos();
