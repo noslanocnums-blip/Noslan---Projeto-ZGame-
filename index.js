@@ -49,7 +49,6 @@ const SITE_URL = "https://zgame-jogos-mobile.netlify.app/";
 const TUTORIAL_URL =
   "https://youtube.com/shorts/5mICKOKDADo?si=YqLW_eCPqEWakYJL";
 
-const EMOJI_AVISO = "<:emoji_9:1561805027956363307>";
 
 const YOUTUBE_CHANNELS = [
   {
@@ -240,9 +239,9 @@ async function expulsarUsuario(message, resultado) {
   try {
     const aviso = await message.channel.send({
       content:
-        `${EMOJI_AVISO} <@${message.author.id}>, sua mensagem foi removida. ` +
-        "Você foi expulso do servidor porque a imagem correspondeu " +
-        "a uma referência não autorizada pela moderação.",
+  `🧐 <@${message.author.id}>, sua mensagem foi removida. ` +
+  "Você foi expulso do servidor porque a imagem correspondeu " +
+  "a uma referência não autorizada pela moderação.",
       allowedMentions: {
         users: [message.author.id]
       }
