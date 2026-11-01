@@ -5,7 +5,8 @@ const {
   Events,
   REST,
   Routes,
-  SlashCommandBuilder
+  SlashCommandBuilder,
+  PermissionFlagsBits
 } = require("discord.js");
 
 const Parser = require("rss-parser");
@@ -66,7 +67,6 @@ const livesEnviadas = new Set();
 // DETECTOR DE IMAGENS
 // =========================
 
-// As quatro referências devem estar nesta pasta.
 const PASTA_REFERENCIAS = path.join(__dirname, "references");
 
 const ARQUIVOS_REFERENCIAS = [
@@ -76,11 +76,7 @@ const ARQUIVOS_REFERENCIAS = [
   "ref4.png"
 ];
 
-// Quanto maior o valor, mais parecidas as imagens
-// precisam ser para serem consideradas correspondentes.
 const LIMITE_SIMILARIDADE = 0.92;
-
-// Todas as imagens são normalizadas para o mesmo tamanho.
 const TAMANHO_COMPARACAO = 32;
 
 let referenciasVisuais = [];
@@ -143,9 +139,6 @@ async function carregarReferencias() {
   }
 }
 
-// Compara a diferença média entre os pixels.
-// Retorna um valor entre 0 e 1.
-// 1 significa pixels iguais; valores menores indicam diferenças.
 function calcularSimilaridade(pixelsA, pixelsB) {
   if (pixelsA.length !== pixelsB.length || pixelsA.length === 0) {
     return 0;
@@ -221,7 +214,59 @@ function pareceImagem(attachment) {
   );
 }
 
-// Verifica todas as imagens da mensagem.
+// =========================
+// EXPULSÃO AUTOMÁTICA
+// =========================
+
+async function expulsarUsuario(message, resultado) {
+  try {
+    // Protege o proprietário do servidor.
+    if (message.author.id === message.guild.ownerId) {
+      console.log("[Moderação] Proprietário do servidor protegido.");
+      return;
+    }
+
+    const botMember = await message.guild.members.fetchMe();
+
+    if (!botMember.permissions.has(PermissionFlagsBits.KickMembers)) {
+      console.error(
+        "[Moderação] O bot não tem permissão para expulsar membros."
+      );
+      return;
+    }
+
+    const membro = await message.guild.members.fetch(
+      message.author.id
+    );
+
+    if (!membro.kickable) {
+      console.error(
+        `[Moderação] Não foi possível expulsar ${message.author.tag}. ` +
+        "Verifique a hierarquia dos cargos."
+      );
+      return;
+    }
+
+    await membro.kick(
+      `Imagem correspondente à referência ${resultado.referencia} ` +
+      `(${(resultado.similaridade * 100).toFixed(1)}% de similaridade).`
+    );
+
+    console.log(
+      `[Moderação] ${message.author.tag} foi expulso.`
+    );
+  } catch (erro) {
+    console.error(
+      "[Moderação] Erro ao expulsar membro:",
+      erro.message
+    );
+  }
+}
+
+// =========================
+// VERIFICAR MENSAGENS
+// =========================
+
 client.on(Events.MessageCreate, async (message) => {
   if (!message.guild || message.author.bot) return;
   if (!message.attachments.size) return;
@@ -246,7 +291,6 @@ client.on(Events.MessageCreate, async (message) => {
       const arrayBuffer = await resposta.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      // Evita tentar processar arquivos excessivamente grandes.
       if (buffer.length > 15 * 1024 * 1024) {
         console.warn(
           `[Detector] Imagem muito grande, ignorada: ${anexo.name}`
@@ -264,7 +308,7 @@ client.on(Events.MessageCreate, async (message) => {
         `(${(resultado.similaridade * 100).toFixed(1)}%)`
       );
 
-      // Apaga a mensagem inteira, inclusive outros anexos.
+      // Apaga a mensagem inteira.
       try {
         await message.delete();
       } catch (erro) {
@@ -277,18 +321,19 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      // Avisa no canal depois de remover a mensagem.
+      // Envia o aviso.
       try {
         const aviso = await message.channel.send({
           content:
-            `⚠️ <@${message.author.id}>, sua mensagem foi removida ` +
-            "porque uma imagem correspondeu a uma referência proibida.",
+            `🧐 <@${message.author.id}>, sua mensagem foi removida. ` +
+            "Você foi expulso do servidor porque a imagem correspondeu " +
+            "a uma referência não autorizada pela moderação.",
           allowedMentions: {
             users: [message.author.id]
           }
         });
 
-        // Tenta apagar o aviso após 10 segundos.
+        // Apaga o aviso após 10 segundos.
         setTimeout(() => {
           aviso.delete().catch(() => {});
         }, 10_000);
@@ -298,6 +343,9 @@ client.on(Events.MessageCreate, async (message) => {
           erro.message
         );
       }
+
+      // Expulsa o membro.
+      await expulsarUsuario(message, resultado);
 
       return;
     } catch (erro) {
@@ -576,7 +624,7 @@ async function verificarYouTube() {
 client.once(Events.ClientReady, async () => {
   console.log(`Online como ${client.user.tag}`);
 
-  client.user.setActivity("GTA/DMC");
+  client.user.setActivity("😈 DMC/GTA 💵");
 
   await carregarReferencias();
   await registrarComandos();
