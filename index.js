@@ -618,6 +618,20 @@ async function verificarYouTube() {
 }
 
 // =========================
+// VERIFICAR ZGAME CLIPES
+// =========================
+
+async function verificarZGameClipes() {
+  const canal = YOUTUBE_CHANNELS.find(
+    c => c.handle === "@zgameclipes"
+  );
+
+  if (canal) {
+    await verificarCanal(canal);
+  }
+}
+
+// =========================
 // BOT ONLINE
 // =========================
 
@@ -628,11 +642,20 @@ client.once(Events.ClientReady, async () => {
 
   await carregarReferencias();
   await registrarComandos();
+
+  // Verificação inicial dos dois canais.
   await verificarYouTube();
 
+  // ZechinXB: a cada 30 segundos.
   setInterval(
-    verificarYouTube,
+    () => verificarCanal(YOUTUBE_CHANNELS[0]),
     30 * 1000
+  );
+
+  // ZGameClipes: a cada 10 segundos.
+  setInterval(
+    verificarZGameClipes,
+    10 * 1000
   );
 });
 
