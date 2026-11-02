@@ -27,6 +27,7 @@ const client = new Client({
 });
 
 const parser = new Parser({
+  timeout: 15000,
   customFields: {
     item: [
       ["yt:liveBroadcastContent", "liveBroadcastContent"]
@@ -62,6 +63,9 @@ const YOUTUBE_CHANNELS = [
 
 const videosEnviados = new Set();
 const livesEnviadas = new Set();
+
+// Evita consultas simultâneas do mesmo canal.
+const verificacoesEmAndamento = new Set();
 
 // =========================
 // DETECTOR DE IMAGENS
@@ -480,6 +484,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // =========================
 
 async function verificarCanal(canalYT) {
+  // Impede sobreposição de consultas do mesmo canal.
+  if (verificacoesEmAndamento.has(canalYT.id)) {
+    return;
+  }
+
+  verificacoesEmAndamento.add(canalYT.id);
+
   try {
     const channelId = canalYT.id;
 
@@ -604,6 +615,8 @@ async function verificarCanal(canalYT) {
     console.error(
       `Erro ao verificar ${canalYT.handle}: ${erro.message}`
     );
+  } finally {
+    verificacoesEmAndamento.delete(canalYT.id);
   }
 }
 
@@ -646,16 +659,16 @@ client.once(Events.ClientReady, async () => {
   // Verificação inicial dos dois canais.
   await verificarYouTube();
 
-  // ZechinXB: a cada 30 segundos.
+  // ZechinXB: a cada 5 segundos.
   setInterval(
     () => verificarCanal(YOUTUBE_CHANNELS[0]),
-    30 * 1000
+    5 * 1000
   );
 
-  // ZGameClipes: a cada 10 segundos.
+  // ZGameClipes: a cada 5 segundos.
   setInterval(
     verificarZGameClipes,
-    10 * 1000
+    5 * 1000
   );
 });
 
