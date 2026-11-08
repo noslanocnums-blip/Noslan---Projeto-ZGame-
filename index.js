@@ -27,7 +27,6 @@ const client = new Client({
 });
 
 const parser = new Parser({
-  timeout: 15000,
   customFields: {
     item: [
       ["yt:liveBroadcastContent", "liveBroadcastContent"]
@@ -66,6 +65,13 @@ const livesEnviadas = new Set();
 
 // Evita consultas simultâneas do mesmo canal.
 const verificacoesEmAndamento = new Set();
+
+// Intervalos de espera após erros no RSS.
+const RSS_INTERVALO_ERRO_404 = 60 * 1000;
+const RSS_INTERVALO_OUTROS_ERROS = 15 * 1000;
+
+// Guarda quando cada canal poderá ser consultado novamente.
+const proximaConsultaRSS = new Map();
 
 // =========================
 // DETECTOR DE IMAGENS
@@ -484,19 +490,50 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // =========================
 
 async function verificarCanal(canalYT) {
+  const channelId = canalYT.id;
+
   // Impede sobreposição de consultas do mesmo canal.
-  if (verificacoesEmAndamento.has(canalYT.id)) {
+  if (verificacoesEmAndamento.has(channelId)) {
     return;
   }
 
-  verificacoesEmAndamento.add(canalYT.id);
+  // Respeita o intervalo de espera após erros.
+  const proximaConsulta = proximaConsultaRSS.get(channelId);
+
+  if (proximaConsulta && Date.now() < proximaConsulta) {
+    return;
+  }
+
+  verificacoesEmAndamento.add(channelId);
 
   try {
-    const channelId = canalYT.id;
+    const url =
+      `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
 
-    const feed = await parser.parseURL(
-      `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
-    );
+    // Consulta o RSS com cabeçalhos personalizados.
+    const resposta = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ZGameBot/1.0)",
+        "Accept": "application/atom+xml, application/xml, text/xml"
+      },
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!resposta.ok) {
+      const erroHTTP = new Error(
+        `HTTP ${resposta.status} ${resposta.statusText}`
+      );
+
+      erroHTTP.status = resposta.status;
+
+      throw erroHTTP;
+    }
+
+    const xml = await resposta.text();
+    const feed = await parser.parseString(xml);
+
+    // Consulta bem-sucedida: remove qualquer espera anterior.
+    proximaConsultaRSS.delete(channelId);
 
     if (!feed.items || feed.items.length === 0) {
       return;
@@ -612,11 +649,32 @@ async function verificarCanal(canalYT) {
     );
 
   } catch (erro) {
-    console.error(
-      `Erro ao verificar ${canalYT.handle}: ${erro.message}`
+    const status = erro.status;
+
+    let intervalo;
+
+    if (status === 404) {
+      intervalo = RSS_INTERVALO_ERRO_404;
+    } else {
+      intervalo = RSS_INTERVALO_OUTROS_ERROS;
+    }
+
+    proximaConsultaRSS.set(
+      channelId,
+      Date.now() + intervalo
     );
+
+    console.error(
+      `[YouTube] Erro ao verificar ${canalYT.handle}: ${erro.message}`
+    );
+
+    console.log(
+      `[YouTube] Nova tentativa para ${canalYT.handle} em ` +
+      `${intervalo / 1000} segundos.`
+    );
+
   } finally {
-    verificacoesEmAndamento.delete(canalYT.id);
+    verificacoesEmAndamento.delete(channelId);
   }
 }
 
