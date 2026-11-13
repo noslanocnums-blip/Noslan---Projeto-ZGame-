@@ -63,6 +63,11 @@ const YOUTUBE_CHANNELS = [
 const videosEnviados = new Set();
 const livesEnviadas = new Set();
 
+// Detector independente de transmissões ao vivo do ZechinXB.
+const LIVE_PAGE_URL = "https://www.youtube.com/@zechinxb/live";
+const LIVE_CHECK_INTERVAL = 30 * 1000;
+let verificacaoLiveEmAndamento = false;
+
 // Evita consultas simultâneas do mesmo canal.
 const verificacoesEmAndamento = new Set();
 
@@ -486,6 +491,91 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // =========================
+// DETECTAR LIVE DO ZECHINXB
+// =========================
+
+async function verificarLiveZechinXB() {
+  if (verificacaoLiveEmAndamento) return;
+
+  verificacaoLiveEmAndamento = true;
+
+  try {
+    const resposta = await fetch(LIVE_PAGE_URL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8"
+      },
+      signal: AbortSignal.timeout(20000)
+    });
+
+    if (!resposta.ok) {
+      throw new Error(`HTTP ${resposta.status} ${resposta.statusText}`);
+    }
+
+    const html = await resposta.text();
+    const inicioLive = html.indexOf("liveBroadcastDetails");
+
+    if (inicioLive === -1) {
+      console.log("[Live] Não encontrei os dados da transmissão na página do ZechinXB.");
+      return;
+    }
+
+    const trechoLive = html.slice(inicioLive, inicioLive + 3000);
+    const statusMatch = trechoLive.match(/"isLiveNow"\s*:\s*(true|false)/);
+
+    if (!statusMatch) {
+      console.log("[Live] Não foi possível confirmar o status da transmissão.");
+      return;
+    }
+
+    if (statusMatch[1] !== "true") {
+      console.log("[Live] ZechinXB está offline.");
+      return;
+    }
+
+    const idMatch = trechoLive.match(/"externalVideoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/);
+
+    if (!idMatch) {
+      console.log("[Live] Transmissão ao vivo detectada, mas não encontrei o ID do vídeo.");
+      return;
+    }
+
+    const videoId = idMatch[1];
+
+    if (livesEnviadas.has(videoId)) {
+      console.log("[Live] Esta transmissão já foi anunciada.");
+      return;
+    }
+
+    const canalDiscord = await client.channels.fetch(DISCORD_CHANNEL_ID);
+
+    if (!canalDiscord || !canalDiscord.isTextBased()) {
+      console.error("[Live] Canal do Discord não encontrado ou não é um canal de texto.");
+      return;
+    }
+
+    const videoLink = `https://www.youtube.com/watch?v=${videoId}`;
+
+    await canalDiscord.send({
+      content:
+        `@everyone\n\n` +
+        `🔴 **O @zechinxb está AO VIVO!**\n\n` +
+        `👉 ${videoLink}`,
+      allowedMentions: {
+        parse: ["everyone"]
+      }
+    });
+
+    livesEnviadas.add(videoId);
+    console.log(`[Live] Nova transmissão anunciada: ${videoId}`);
+  } catch (erro) {
+    console.error(`[Live] Erro ao verificar a transmissão: ${erro.message}`);
+  } finally {
+    verificacaoLiveEmAndamento = false;
+  }
+}
+
+// =========================
 // VERIFICAR CANAL DO YOUTUBE
 // =========================
 
@@ -564,43 +654,6 @@ async function verificarCanal(canalYT) {
         `Não foi possível encontrar o ID de ${canalYT.handle}`
       );
       return;
-    }
-
-    // DETECÇÃO DE LIVE
-    const liveStatus = video.liveBroadcastContent || "none";
-
-    if (
-      canalYT.handle === "@zechinxb" &&
-      liveStatus === "live"
-    ) {
-      if (!livesEnviadas.has(videoId)) {
-        const canalDiscord = await client.channels.fetch(
-          DISCORD_CHANNEL_ID
-        );
-
-        if (!canalDiscord) {
-          console.log("Canal do Discord não encontrado.");
-          return;
-        }
-
-        const videoLink =
-          `https://www.youtube.com/watch?v=${videoId}`;
-
-        await canalDiscord.send({
-          content:
-            `@everyone\n\n` +
-            `🔴 **O @zechinxb está AO VIVO!**\n\n` +
-            `**${video.title || "Live iniciada!"}**\n\n` +
-            `👉 ${videoLink}`,
-          allowedMentions: {
-            parse: ["everyone"]
-          }
-        });
-
-        livesEnviadas.add(videoId);
-
-        console.log(`LIVE detectada: ${video.title}`);
-      }
     }
 
     // SISTEMA DE VÍDEOS
@@ -714,8 +767,15 @@ client.once(Events.ClientReady, async () => {
   await carregarReferencias();
   await registrarComandos();
 
-  // Verificação inicial dos dois canais.
+  // Verificação inicial dos vídeos e da live do ZechinXB.
   await verificarYouTube();
+  await verificarLiveZechinXB();
+
+  // Detector independente de live: a cada 30 segundos.
+  setInterval(
+    verificarLiveZechinXB,
+    LIVE_CHECK_INTERVAL
+  );
 
   // ZechinXB: a cada 5 segundos.
   setInterval(
