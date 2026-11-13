@@ -513,6 +513,15 @@ async function verificarLiveZechinXB() {
     }
 
     const html = await resposta.text();
+
+    // Diagnóstico: mostra o que a FadeHost recebeu do YouTube.
+    console.log("[Live Debug] HTTP:", resposta.status);
+    console.log("[Live Debug] URL final:", resposta.url);
+    console.log("[Live Debug] Tamanho HTML:", html.length);
+    console.log("[Live Debug] liveBroadcastDetails:", html.includes("liveBroadcastDetails"));
+    console.log("[Live Debug] isLiveNow:", html.includes("isLiveNow"));
+    console.log("[Live Debug] externalVideoId:", html.includes("externalVideoId"));
+
     const inicioLive = html.indexOf("liveBroadcastDetails");
 
     if (inicioLive === -1) {
