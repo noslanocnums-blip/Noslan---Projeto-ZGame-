@@ -522,6 +522,37 @@ async function verificarLiveZechinXB() {
     console.log("[Live Debug] isLiveNow:", html.includes("isLiveNow"));
     console.log("[Live Debug] externalVideoId:", html.includes("externalVideoId"));
 
+    // Diagnóstico adicional: identifica outros formatos de dados do YouTube.
+    const marcadores = [
+      "ytInitialData",
+      "ytInitialPlayerResponse",
+      "videoRenderer",
+      "videoId",
+      "isLive",
+      "LIVE",
+      "scheduledStartTime",
+      "playabilityStatus",
+      "consent.youtube.com",
+      "Before you continue",
+      "unusual traffic"
+    ];
+
+    for (const marcador of marcadores) {
+      console.log(
+        `[Live Debug] ${marcador}:`,
+        html.includes(marcador)
+      );
+    }
+
+    const posicaoInitialData = html.indexOf("ytInitialData");
+
+    if (posicaoInitialData !== -1) {
+      console.log(
+        "[Live Debug] Trecho ytInitialData:",
+        html.substring(posicaoInitialData, posicaoInitialData + 700)
+      );
+    }
+
     const inicioLive = html.indexOf("liveBroadcastDetails");
 
     if (inicioLive === -1) {
